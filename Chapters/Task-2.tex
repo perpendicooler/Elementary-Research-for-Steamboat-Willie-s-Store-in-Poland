@@ -1,0 +1,237 @@
+\chapter{Exploring TSP: Integer LP Formulation and Lazy Row Generation}
+\section*{Introduction}
+
+The Metric Traveling Salesman Problem (TSP) is a classic optimization problem where the goal is to find the shortest possible tour that visits a set of points exactly once. This report presents the implementation and results of two approaches for solving the metric TSP problem: the Integer Linear Programming (LP) formulation with exponentially many constraints, and a "lazy row generation" version.
+
+\section*{Integer LP Formulation}
+
+The first approach involves implementing the Integer LP formulation, specifically the Dantzig-Fulkerson-Johnson formulation as described in \cite{dfj-formulation}. This formulation typically includes exponentially many constraints, making it challenging for large instances.
+\newpage
+\subsection*{Implementation}
+
+The Integer LP formulation was implemented using pandas and lp, and the provided dataset is 50-cities-pairwise-distance.We manipulate the data as to make a Source and destination and cost vector. By making a symmetric matrix out of it.
+\begin{center}
+    \begin{lstlisting}[language = Python]
+        import pandas as pd
+
+# Load data from Excel we can take any number of cities_pairwise 
+df = pd.read_excel(r"C:\Users\Perpendicooler\poland_50_cities_pairwise_distances.xlsx")
+
+# Create a list of unique city names
+cities = list(set(df['From'].tolist() + df['To'].tolist()))
+
+# Create a pivot table to organize distances
+distance_matrix = df.pivot_table(values='Distance', index='From', columns='To', aggfunc='first')
+
+# Ensure symmetry
+distance_matrix = distance_matrix.add(distance_matrix.T, fill_value=0)
+
+# Explicitly set diagonal to zeros
+for city in cities:
+    distance_matrix.at[city, city] = 0
+
+# Save the distance matrix to a new Excel file
+distance_matrix.to_excel(r"C:\Users\Perpendicooler\distance_matrix.xlsx")
+
+# Display the distance matrix
+print("Distance Matrix:")
+print(distance_matrix)
+
+    \end{lstlisting}
+\end{center}
+Now We will excute the program for this distance matrix to find the best possible outcome for TSP.
+\begin{center}
+\begin{lstlisting}[language=Python, caption={Integer LP Formulation Implementation}]
+import pandas as pd
+from pulp import LpProblem, LpVariable, lpSum, LpMinimize, LpStatus
+
+# Load data from Excel, setting 'Unnamed: 0' as the index
+data = pd.read_excel(r"C:\Users\Perpendicooler\distance_matrix.xlsx", index_col='Unnamed: 0')
+
+# Extract city names
+city_names = list(data.columns)
+city_indices = {city: i for i, city in enumerate(city_names)}
+
+# Extract distances
+distances = {(city_indices[i], city_indices[j]): data.at[i, j] for i in city_names for j in city_names if i != j}
+
+# Create optimization model
+model_tsp = LpProblem("TSP", LpMinimize)
+
+# Decision variables
+x = {(i, j): LpVariable(name=f"x_{i}_{j}", cat='Binary') for i in city_indices.values() for j in city_indices.values() if i != j}
+
+# Objective function
+model_tsp += lpSum(distances[i, j] * x[i, j] for i in city_indices.values() for j in city_indices.values() if i != j), "Minimize Distance"
+
+# Constraints
+# Ensure that each city is visited exactly once
+for i in city_indices.values():
+    model_tsp += lpSum(x[i, j] for j in city_indices.values() if i != j) == 1, f"VisitOnce_{i}"
+
+# Ensure that each city is left exactly once
+for j in city_indices.values():
+    model_tsp += lpSum(x[i, j] for i in city_indices.values() if i != j) == 1, f"LeaveOnce_{j}"
+
+
+# Solve the model
+model_tsp.solve()
+
+# Display the results
+print("Status:", LpStatus[model_tsp.status])
+
+# Print the optimal path
+optimal_path = [var for var in model_tsp.variables() if var.value() == 1]
+print("Optimal Path:")
+for var in sorted(optimal_path, key=lambda v: (int(v.name.split('_')[1]), int(v.name.split('_')[2]))):
+    print(f"{var.name}: {var.value()}")
+    
+def get_city_name(index):
+    return next(city for city, idx in city_indices.items() if idx == index)
+
+# Display the optimal path
+optimal_path_indices = [int(var.name.split('_')[1]) for var in optimal_path]
+optimal_path_indices.append(optimal_path_indices[0])  # Add the starting city at the end to complete the loop
+
+optimal_path_names = [get_city_name(idx) for idx in optimal_path_indices]
+
+print("Optimal Path:")
+print(" -> ".join(optimal_path_names))    
+
+
+\end{lstlisting}
+    
+\end{center}
+
+\subsection*{Results}
+The provided sequence is a solution to the Traveling Salesman Problem (TSP) for a given set of cities. In TSP, the goal is to find the shortest possible tour that visits each city exactly once and returns to the starting city. The sequence you provided represents an optimal tour that minimizes the overall travel distance for the specified cities. The TSP solution starts and ends in "Aleksandrów Łódzki" and traverses through the listed cities in the order mentioned.\newline\newline
+\texttt{
+Optimal Path:
+Aleksandrów Łódzki -> Daszyna -> Dobre Miasto -> Dwikozy -> Dziekanów Leśny -> Dąbie -> Firlej -> Godziszów -> Grójec -> Hrubieszów -> Iłża -> Biały Bór -> Jakubów -> Jastków -> Jodłówka-Wałki -> Józefów nad Wisłą -> Karczmiska -> Korczew -> Krasnopol -> Krynki -> Krzywda -> Maszkienice -> Borowa -> Niedźwiada -> Opatów -> Ostrów -> Paprotnia -> Pruchnik -> Raczki -> Radoszyce -> Rejon ulicy Saperów -> Rzgów -> Sawin -> Cegłów -> Siedliska -> Srokowo -> Swojczyce -> Szarów -> Wiśniowa -> Wyśmierzyce -> Wólka Tanewska -> Węgorzewo -> Łapy -> Żurowa -> Cewice -> Chmielnik -> Ciepielów -> Czarków -> Czarna Woda -> Człopa -> Aleksandrów Łódzki
+}
+
+\section*{Lazy Row Generation}
+
+The second approach involves a "lazy row generation" version, where constraints are added progressively until a valid tour is found. This method is known for its efficiency in solving large instances.
+
+\subsection*{Implementation}
+
+The lazy row generation version was implemented using [solver/library], with inspiration from the Gurobi example \href{https://colab.research.google.com/github/Gurobi/modeling-examples/blob/master/traveling_salesman/tsp.ipynb}{\textbf{Gurobi-example}} 
+\subsection*{Data computation}The following function calculates the distance for 50 each pair of cities. Since we are solving the symmetric traveling salesman problem, we use combinations of cities.
+
+\begin{lstlisting}[language=Python, caption={Data Computation}]
+import pandas as pd
+
+# Replace 'your_file.xlsx' with the path to your Excel file
+file_path = r"C:\Users\Perpendicooler\poland_50_cities_pairwise_distances.xlsx"
+
+# Read the Excel file into a DataFrame
+df = pd.read_excel(file_path)
+
+# Display the DataFrame
+print(df)
+\end{lstlisting}
+\subsection*{Model Code}
+We now write the model for the TSP, by defining decision variables, constraints, and objective function. Because this is the symmetric traveling salesman problem, we can make it more efficient by setting the object x[j,i] to x[i,j], instead of a constraint
+\begin{center}
+    \begin{lstlisting}[language=Python, caption={Optimize the Model}]
+    import pandas as pd
+import gurobipy as gp
+from gurobipy import GRB
+
+# Load data from Excel
+file_path = r"C:\Users\Perpendicooler\poland_50_cities_pairwise_distances.xlsx"
+data = pd.read_excel(file_path)
+
+# Extract city names and distances
+cities = set(data["From"].tolist() + data["To"].tolist())
+city_index = {city: i for i, city in enumerate(cities)}
+distances = {(city_index[row.From], city_index[row.To]): row.Distance for row in data.itertuples()}
+
+# Create a Gurobi model
+m = gp.Model()
+
+# Variables: is city 'i' adjacent to city 'j' on the tour?
+vars = m.addVars(distances.keys(), obj=distances, vtype=GRB.BINARY, name='x')
+
+# Symmetric direction: Copy the object
+keys = list(vars.keys())  # Create a list of keys
+for i, j in keys:
+    vars[j, i] = vars[i, j]  # edge in opposite direction
+
+# Constraints: two edges incident to each city
+capitals = [i for i in range(len(cities))]
+cons = m.addConstrs(vars.sum(c, '*') == 2 for c in capitals)
+
+# Optimize the model
+m.optimize()
+
+# Print the tour
+tour = [i for i, j in vars.keys() if vars[i, j].X > 0.5]
+print("Tour:", tour)
+
+        
+    \end{lstlisting}
+\end{center}
+
+\subsection*{Results}
+\begin{verbatim}
+olution count 4: 2698.1 2786.02 2810.06 13005.3 
+Optimal solution found (tolerance 1.00e-04)
+Best objective 2.698101399109e+03, best bound 2.698101399109e+03, gap 0.0000%
+\end{verbatim}
+\subsection*{Callback}
+\begin{center}
+    \begin{lstlisting}[language=Python, caption={Using Callback Function}]
+        # Callback - use lazy constraints to eliminate sub-tours
+def subtourelim(model, where):
+    if where == GRB.Callback.MIPSOL:
+        # make a list of edges selected in the solution
+        vals = model.cbGetSolution(model._vars)
+        selected = gp.tuplelist((i, j) for i, j in model._vars.keys() if vals[i, j] > 0.5)
+        # find the shortest cycle in the selected edge list
+        tour = subtour(selected)
+        if len(tour) < len(capitals):
+            # add subtour elimination constr. for every pair of cities in subtour
+            model.cbLazy(gp.quicksum(model._vars[i, j] for i, j in combinations(tour, 2)) <= len(tour) - 1)
+
+# Given a tuplelist of edges, find the shortest subtour
+def subtour(edges):
+    unvisited = capitals[:]
+    cycle = capitals[:]  # Dummy - guaranteed to be replaced
+    while unvisited:  # true if list is non-empty
+        thiscycle = []
+        neighbors = unvisited
+        while neighbors:
+            current = neighbors[0]
+            thiscycle.append(current)
+            unvisited.remove(current)
+            neighbors = [j for i, j in edges.select(current, '*') if j in unvisited]
+        if len(thiscycle) <= len(cycle):
+            cycle = thiscycle  # New shortest subtour
+    return cycle
+
+# Set the callback function
+m._vars = vars
+m.Params.LazyConstraints = 1
+m.optimize(subtourelim)
+
+    \end{lstlisting}
+\end{center}
+\newpage
+\subsection*{Results For callback}
+\begin{verbatim}
+  Solution count 4: 2698.1 2786.02 2810.06 13005.3 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 2.698101399109e+03, best bound 2.698101399109e+03, gap 0.0000%
+
+User-callback calls 30, time in user-callback 0.00 sec  
+\end{verbatim}
+
+
+\section*{Conclusion}
+
+In conclusion, the report outlines the implementation and results of two approaches for solving the metric TSP problem. The Integer LP formulation with exponentially many constraints and the lazy row generation version were explored, with each having its strengths and limitations. Further analysis and experimentation may be conducted to improve the scalability and efficiency of both methods.
+
+

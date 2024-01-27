@@ -1,0 +1,325 @@
+\chapter{Preliminary Research for Steamboat Willie's in Poland}
+\section*{Introduction}
+The new fast-food chain, Steamboat Willie's, is planning to expand its presence in Poland. This report presents preliminary research conducted to determine the number of stores required to ensure that every town in Poland has a Steamboat Willie's within a 50km radius.
+\section*{Data Analysis}
+The dataset used for this research consists of information about cities in Poland and other countries as well, including their geographical coordinates. The data was preprocessed to extract relevant information.
+
+\begin{center}
+    \begin{lstlisting}[language=Python, caption=Loading the Dataset]
+    import pandas as pd
+
+# Specify the path to your local JSON file
+# The dataset given as json file
+file_path = r"C:\Users\Perpendicooler\Downloads\dataset.json"
+
+
+# Read the JSON file into a DataFrame
+df = pd.read_json(file_path)
+# Save the DataFrame to an Excel file
+# We save the dataframe into an excel file for better view
+df.to_excel('output.xlsx', index=False)
+
+#files.download('output.xlsx')
+
+# Display the first few rows of the DataFrame
+df.head()
+
+\end{lstlisting}
+\end{center}
+The Python code filters a DataFrame (\texttt{df}) to extract data related to Poland (\texttt{'cou\_name\_en' == 'Poland'}). The filtered data is stored in a new DataFrame called \texttt{poland\_data}. The code then prints the filtered DataFrame and exports the entire original DataFrame to an Excel file ('output\_with\_poland.xlsx').
+\begin{center}
+    \begin{lstlisting}[language=Python, caption=Loading the Dataset]
+        poland_data = df[df['cou_name_en'] == 'Poland'].copy()
+
+# Display the filtered DataFrame
+print(poland_data)
+df.to_excel('output_with_poland.xlsx', index=False)
+
+    \end{lstlisting} 
+\end{center} 
+The Python code reads an Excel file located at local pc into a DataFrame (\texttt{df}) using the \texttt{pd.read\_excel()} function. The data is assumed to be manipulated for improvement. Subsequently, it prints the contents of the DataFrame.
+\begin{center}
+    \begin{lstlisting}[language=Python, caption=Loading the Dataset]
+        file_path_poland = r"C:\Users\Perpendicooler\manupulated_data.xlsx"
+df = pd.read_excel(file_path_poland)
+print(df)
+    \end{lstlisting}
+\end{center}
+The Python code calculates pairwise distances between the first 500 cities in Poland using their latitude and longitude coordinates. It uses the Haversine formula to compute distances on the Earth's surface. The dataset is loaded from a JSON file ('dataset.json'), and relevant columns are extracted for cities in Poland. The computed distances are then stored in an Excel file.
+\begin{center}
+    \begin{lstlisting}[language=Python, caption=Loading the Dataset]
+    import itertools
+import pandas as pd
+from sklearn.metrics.pairwise import haversine_distances
+from math import radians
+
+def distance(row1, row2):
+    pos1 = (row1['coordinates']['lat'], row1['coordinates']['lon'])
+    pos2 = (row2['coordinates']['lat'], row2['coordinates']['lon'])
+    radians1 = [radians(pos1[0]), radians(pos1[1])]
+    radians2 = [radians(pos2[0]), radians(pos2[1])]
+    res = haversine_distances([radians1, radians2])
+    res *= 6371000 / 1000  # multiply by Earth radius to get kilometers
+    return res[0][1]
+
+# Load the dataset
+df = pd.read_json("dataset.json")
+
+# Extract relevant columns for the first 500 cities in Poland
+# We can extract any number of city just we need to change the 500 in this with any number i want.
+poland_data = df[df['country_code'] == 'PL'].head(500)[['name', 'coordinates']]
+
+# Initialize an empty list to store pairs of cities and distances
+distances = []
+
+# Iterate through each pair of cities in the first 50 cities in Poland
+for (city1_idx, city1), (city2_idx, city2) in itertools.combinations(poland_data.iterrows(), 2):
+    dist = distance(city1, city2)
+    
+    # Append the pair and distance to the list
+    distances.append((city1['name'], city2['name'], dist))
+
+# Create a dataframe from the distances
+distance_df = pd.DataFrame(distances, columns=['From', 'To', 'Distance'])
+
+# Store the distances in an Excel file
+distance_df.to_excel('poland_500_cities_pairwise_distances.xlsx', index=False)
+
+        
+    \end{lstlisting}
+\end{center}
+The Python code calculates pairwise distances between 50 cities in Poland using their latitude and longitude coordinates to optimize computation time. The Haversine formula is employed for distance calculation on the Earth's surface. Instead of processing all 500 cities, a subset of 10 cities is chosen for demonstration purposes, allowing the program to run more efficiently. The dataset is loaded from a JSON file ('dataset.json'), and relevant columns are extracted. The computed distances are then stored in an Excel file in local machine.
+\newpage
+\section*{Optimized Result}
+Using integer programming to computed the number of  stores does STEAMBOAT WILLIE's need to open for the restriction of 50km, as above.
+
+\begin{center}
+    \begin{lstlisting}[language=Python, caption=Minimize the store opening within 50km in every city of poland]
+        import pandas as pd
+from pulp import LpVariable, LpProblem, LpMinimize, lpSum
+
+# Load data from Excel
+data = pd.read_excel(r"C:\Users\Perpendicooler\poland_50_cities_pairwise_distances.xlsx")  
+
+# Extract city names and distances
+city_names = set(data["From"].tolist() + data["To"].tolist())
+city_index = {city: i for i, city in enumerate(city_names)}
+distances = {}
+for row in data.itertuples():
+    distances[(city_index[row.From], city_index[row.To])] = row.Distance
+
+# Set the coverage radius
+coverage_radius = 50
+
+# Create optimization model
+model = LpProblem("StorePlacement", LpMinimize)
+
+# Decision variables: whether to open a store in each city
+s = {i: LpVariable(name=f"store_{i}", cat="Binary") for i in range(len(city_names))}
+
+# Objective: Minimize the total number of stores opened
+model += lpSum(s), "Minimize Stores"
+
+# Constraint: Every city must have at least one store within 50km
+for city in range(len(city_names)):
+    model += lpSum(s[j] for j in range(len(city_names)) if city != j and (city, j) in distances) >= 1, f"City {city+1} Coverage"
+
+# Solve the model
+model.solve()
+
+# Analyze results
+num_stores = int(model.objective.value())
+
+# Print the cities where the stores are opened
+print("Open stores:")
+for i, city in enumerate(city_names):
+    if int(s[i].value()) == 1:
+        print(f"{city}")
+
+# Check coverage and open additional stores if needed
+while True:
+    coverage = {city: False for city in city_names}
+    
+    # Check coverage for each city
+    for i, city in enumerate(city_names):
+        if int(s[i].value()) == 1:
+            coverage[city] = True
+            for j in range(len(city_names)):
+                if city != j and (city, j) in distances and distances[(city, j)] > coverage_radius:
+                    coverage[city] = False
+    
+    # If any city is not covered within 50km range, open a new store in the uncovered city
+    if False in coverage.values():
+        uncovered_city = next(city for city, covered in coverage.items() if not covered)
+        model += s[city_index[uncovered_city]] == 1
+        model.solve()
+        num_stores += 1
+        print(f"{uncovered_city}")
+    else:
+        break
+
+print(f"Final number of stores needed: {num_stores}")
+# Create a DataFrame with the results
+results_df = pd.DataFrame(index=range(1, len(city_names) + 1), columns=["City Name"])
+
+# Populate the DataFrame with the cities where stores are opened
+for i, city in enumerate(city_names):
+    if int(s[i].value()) == 1:
+        results_df.at[i+1, "City Name"] = city
+
+# Save the results to an Excel file
+results_df.to_excel("opened_stores_results.xlsx", index_label="Index")
+
+
+    \end{lstlisting}
+\end{center}
+
+
+The optimization model aims to minimize the number of stores opened in a set of cities within a coverage radius of 50 km. The initial solution opens stores in several cities, and the algorithm iteratively checks the coverage and opens additional stores if necessary.
+
+\subsection*{Opened Stores}
+
+\begin{verbatim}
+Open stores:
+Borowa
+Sawin
+...
+Wiśniowa
+Krynki
+Aleksandrów Łódzki
+Jodłówka-Wałki
+\end{verbatim}
+
+\subsection*{Final Number of Stores Needed}
+
+\begin{verbatim}
+Final number of stores needed: 115
+\end{verbatim}
+
+\subsection*{Results DataFrame}
+We need to open 115 stores in order to cover all the city.
+So that everyone from any city can access to that store within 50km. The opened stores' information is saved in a DataFrame and stored in an Excel file named 'opened\_stores\_results.xlsx'.
+\section*{ Minimum Distances for Different Store Counts}
+
+Suppose the correct answer is 115. The table below shows the minimum distance $D$ for each scenario of opening exactly $k \leq 115$ stores, ensuring that every town in Poland can have a STEAMBOAT WILLIE'S within $D$ km.
+\begin{center}
+    \begin{lstlisting}[language=Python, caption=Minimum Resturent we need to open]
+        import pandas as pd
+from pulp import LpProblem, LpVariable, lpSum, LpMinimize, LpStatus
+
+# Load data from Excel
+data = pd.read_excel(r"C:\Users\Perpendicooler\poland_50_cities_pairwise_distances.xlsx")  
+
+# Extract city names and distances
+city_names = set(data["From"].tolist() + data["To"].tolist())
+city_index = {city: i for i, city in enumerate(city_names)}
+distances = {(city_index[row.From], city_index[row.To]): row.Distance for row in data.itertuples()}
+
+# Set the maximum number of stores
+max_stores = 115
+
+# Create a DataFrame to store results
+results_df = pd.DataFrame(index=range(1, max_stores + 1), columns=["Number of Stores", "Minimum Distance"])
+
+# Iterate over the number of stores (k)
+for k in results_df.index:
+    # Create optimization model
+    model = LpProblem("StorePlacement", LpMinimize)
+
+    # Decision variables: whether to open a store in each city
+    s = {i: LpVariable(name=f"store_{i}", cat="Binary") for i in range(len(city_names))}
+
+    # Objective: Minimize the total distance
+    model += lpSum(distances[i, j] * s[i] for i in range(len(city_names)) for j in range(len(city_names)) if (i, j) in distances), "Minimize Distance"
+
+    # Constraint: Open exactly k stores
+    model += lpSum(s[i] for i in range(len(city_names))) == k, f"OpenExactly_{k}_Stores"
+
+    # Solve the model
+    model.solve()
+
+    # Store the results in the DataFrame
+    results_df.at[k, "Number of Stores"] = k
+    results_df.at[k, "Minimum Distance"] = lpSum(distances[i, j] * s[i].value() for i in range(len(city_names)) for j in range(len(city_names)) if (i, j) in distances).value()
+
+# Display the results table
+print(results_df)
+results_df.to_excel("store_placement_results.xlsx", index_label="Index")
+
+    \end{lstlisting}
+\end{center}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ccc}
+\toprule
+\textbf{Number of Stores ($k$)} & \textbf{Minimum Distance ($D$)} & \\
+\midrule
+1 & ... & \\
+2 & ... & \\
+3 & ... & \\
+... & ... & \\
+115 & ... & \\
+\bottomrule
+\end{tabular}
+\caption{Minimum Distances for Different Store Counts}
+\end{table}
+
+\section*{ Linear Programming Relaxation}
+Finally, we compute the linear programming relaxation of the integer programming problem. This involves determining how many stores need to be opened, allowing for fractions of stores in cities, so that every town in Poland has at least one within 50 km.
+
+The linear programming relaxation problem can be expressed as follows:
+
+\begin{align*}
+\text{Minimize} & \quad \text{Total Stores} \\
+\text{Subject to} & \quad \text{Coverage Constraint for each city within 50 km} \\
+& \quad \text{Fractional store opening variables} \in [0, 1] \\
+\end{align*}
+\newpage
+\begin{center}
+    \begin{lstlisting}[language=Python, caption=linear programming relaxation]
+        import pandas as pd
+from pulp import LpProblem, LpVariable, lpSum, LpMinimize, LpStatus
+
+# Load data from Excel
+data = pd.read_excel(r"C:\Users\Perpendicooler\poland_50_cities_pairwise_distances.xlsx")  # Replace with your actual file path
+
+# Extract city names and distances
+city_names = set(data["From"].tolist() + data["To"].tolist())
+city_index = {city: i for i, city in enumerate(city_names)}
+distances = {(city_index[row.From], city_index[row.To]): row.Distance for row in data.itertuples()}
+
+# Create optimization model for linear programming relaxation
+model_relaxation = LpProblem("StorePlacementRelaxation", LpMinimize)
+
+# Decision variables: fraction of a store to open in each city
+s_relaxation = {i: LpVariable(name=f"store_{i}", lowBound=0, upBound=1) for i in range(len(city_names))}
+
+# Objective: Minimize the total distance
+model_relaxation += lpSum(distances[i, j] * s_relaxation[i] for i in range(len(city_names)) for j in range(len(city_names)) if (i, j) in distances), "Minimize Distance"
+
+# Constraint: Every city must have at least one store within 50km
+for city in range(len(city_names)):
+    model_relaxation += lpSum(distances[i, j] * s_relaxation[i] for i in range(len(city_names)) for j in range(len(city_names)) if (i, j) in distances and i != j) >= 1, f"City {city+1} Coverage"
+
+# Solve the model
+model_relaxation.solve()
+
+# Display the results
+print("Status:", LpStatus[model_relaxation.status])
+rounded_stores_needed = round(model_relaxation.objective.value())
+print("Number of stores needed (fractional):",model_relaxation.objective.value())
+print("Number of stores needed (rounded):", rounded_stores_needed)
+
+    \end{lstlisting}
+\end{center}
+\newpage
+\subsection*{Results Data Frame}
+\begin{verbatim}
+Status: Optimal
+Number of stores needed (fractional): 0.999999981492213
+Number of stores needed (rounded): 1
+\end{verbatim}
+The output indicates that the linear programming relaxation of the integer programming problem has been solved, and the solution is optimal. The fractional solution suggests that a minimum of approximately 1 store is needed to meet the coverage constraints for every town in Poland, with each store contributing a fraction of its presence.
+
+
