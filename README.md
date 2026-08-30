@@ -8,6 +8,8 @@
 
 This repository contains a geospatial Operations Research study built around a hypothetical market-expansion problem for **Steamboat Willie's** in Poland.
 
+> **GitHub math rendering:** Display equations in this README use GitHub's fenced `math` blocks for more reliable rendering.
+
 The project connects three classical optimization tasks:
 
 1. **Minimum set covering / facility location** — choose the fewest candidate store locations needed so every Polish populated place represented in the dataset lies within a 50 km great-circle radius of at least one store.
@@ -47,29 +49,30 @@ Main fields:
 
 The first model is a binary minimum set-covering problem.
 
-For candidate location \(j\),
+For candidate location $j$:
 
-\[
+```math
 x_j =
 \begin{cases}
-1 & \text{if a store is opened at } j,\\
-0 & \text{otherwise.}
+1, & \text{if a store is opened at } j,\\
+0, & \text{otherwise.}
 \end{cases}
-\]
+```
 
 The model minimizes:
 
-\[
+```math
 \min \sum_j x_j
-\]
+```
 
 subject to:
 
-\[
-\sum_j a_{ij}x_j \ge 1 \qquad \forall i,
-\]
+```math
+\sum_j a_{ij}x_j \ge 1
+\qquad \forall i
+```
 
-where \(a_{ij}=1\) if candidate \(j\) is within 50 km of demand point \(i\).
+where $a_{ij}=1$ if candidate $j$ is within 50 km of demand point $i$.
 
 The notebook reports both the best feasible solution and the solver's optimality certificate. A store count is described as **optimal only when the MIP solver proves optimality**.
 
@@ -77,21 +80,23 @@ The notebook reports both the best feasible solution and the solver's optimality
 
 For the selected store locations, the symmetric TSP uses binary edge variables:
 
-\[
+```math
 \min \sum_{i<j} d_{ij}x_{ij}
-\]
+```
 
 with degree constraints:
 
-\[
-\sum_j x_{ij} = 2 \qquad \forall i.
-\]
+```math
+\sum_j x_{ij} = 2
+\qquad \forall i
+```
 
 To eliminate disconnected cycles, the DFJ subtour inequalities are:
 
-\[
-\sum_{i<j;\ i,j\in S} x_{ij} \le |S|-1.
-\]
+```math
+\sum_{\substack{i<j\\ i,j\in S}} x_{ij}
+\le |S|-1
+```
 
 Two exact strategies are compared:
 
@@ -113,15 +118,15 @@ Christofides' algorithm follows:
 
 For metric TSP instances, Christofides guarantees:
 
-\[
-L_C \le \frac{3}{2}L^*.
-\]
+```math
+L_C \le \frac{3}{2}L^*
+```
 
 The notebook compares the empirical ratio:
 
-\[
+```math
 \frac{L_C}{L^*}
-\]
+```
 
 against the exact ILP optimum on the benchmark instances.
 
@@ -175,7 +180,7 @@ For local execution:
 ```bash
 python -m venv .venv
 source .venv/bin/activate       # Linux/macOS
-# .venv\Scripts\activate      # Windows
+# .venv\Scripts\activate        # Windows
 
 pip install -r requirements.txt
 jupyter notebook notebooks/operations-research-in-poland.ipynb
@@ -218,9 +223,13 @@ Likewise, the TSP assumes symmetric metric distances, one tour, and no vehicle c
 
 A stronger next-stage model is a **Location-Routing Problem (LRP)** that jointly optimizes facility decisions and route cost:
 
-\[
-\min \; \text{facility opening cost} + \text{routing cost}
-\]
+```math
+\min \left(
+\text{facility opening cost}
++
+\text{routing cost}
+\right)
+```
 
 subject to coverage, capacity, assignment, routing, and budget constraints.
 
